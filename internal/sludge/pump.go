@@ -89,11 +89,39 @@ func (c *PumpController) StopOwned(pumpID string, sequenceID uuid.UUID, generati
 	if pump.OwnerSequence != sequenceID || pump.OwnerGeneration != generation {
 		return Pump{}, errors.New("pump ownership changed before stop")
 	}
+	return c.stopLocked(pump, now), nil
+}
+
+// Owner 返回泵当前的归属凭证，供补偿任务判断设备是否已被其他序列接管。
+func (c *PumpController) Owner(pumpID string) (Pump, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	pump, ok := c.pumps[pumpID]
+	return pump, ok
+}
+
+// StopUnowned 停止当前没有任何归属序列的泵。进程重启后泵归属只存在于内存、
+// 会全部丢失，持久化恢复出来的补偿是最后已知归属；此时没有新任务接管，
+// 由补偿直接停泵是安全的。若泵已被重新分配则拒绝执行，避免误停新任务。
+func (c *PumpController) StopUnowned(pumpID string, now time.Time) (Pump, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pump, ok := c.pumps[pumpID]
+	if !ok {
+		return Pump{}, errors.New("return pump is not found")
+	}
+	if pump.OwnerSequence != uuid.Nil {
+		return Pump{}, errors.New("pump has a new owner; stop requires manual review")
+	}
+	return c.stopLocked(pump, now), nil
+}
+
+func (c *PumpController) stopLocked(pump Pump, now time.Time) Pump {
 	pump.Running = false
 	pump.Flow = 0
 	pump.UpdatedAt = now.UTC()
-	c.pumps[pumpID] = pump
-	return pump, nil
+	c.pumps[pump.ID] = pump
+	return pump
 }
 
 func (c *PumpController) Snapshot() []Pump {

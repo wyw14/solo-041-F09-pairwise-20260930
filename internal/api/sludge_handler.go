@@ -26,6 +26,7 @@ type sequenceRequest struct {
 func (s *Server) sludgeStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"pumps": s.plant.Pumps(), "interlocks": s.plant.Interlocks(),
+		"compensations": s.plant.Compensations(),
 	})
 }
 

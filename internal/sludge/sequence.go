@@ -91,7 +91,10 @@ func (b *SequenceBook) Fail(lineID model.LineID, now time.Time) (Sequence, error
 	if err != nil {
 		return Sequence{}, err
 	}
-	b.queue.Schedule(compensation)
+	// 同一故障重复上报时，队列按 线/序列/代际/泵/动作 去重，不会叠加相同停泵任务。
+	if _, err := b.queue.Schedule(compensation); err != nil {
+		return Sequence{}, err
+	}
 	return sequence, nil
 }
 
@@ -100,10 +103,26 @@ func (b *SequenceBook) ExecuteCompensation(ctx context.Context, compensation jou
 		return err
 	}
 	if compensation.Action != "stop" {
-		return errors.New("unsupported sludge compensation action")
+		return journal.NewManualReviewError("unsupported sludge compensation action: " + compensation.Action)
 	}
-	_, err := b.pumps.StopOwned(compensation.DeviceID, compensation.SequenceID, compensation.Generation, now)
-	return err
+	pump, found := b.pumps.Owner(compensation.DeviceID)
+	if !found {
+		return journal.NewManualReviewError("return pump " + compensation.DeviceID + " is no longer configured")
+	}
+	switch {
+	case pump.OwnerSequence == compensation.SequenceID && pump.OwnerGeneration == compensation.Generation:
+		// 归属未变：正常执行延迟停泵。
+		_, err := b.pumps.StopOwned(compensation.DeviceID, compensation.SequenceID, compensation.Generation, now)
+		return err
+	case pump.OwnerSequence == uuid.Nil:
+		// 进程重启后泵归属随内存清空，且尚无新序列接管：按补偿凭证停泵是安全的。
+		_, err := b.pumps.StopUnowned(compensation.DeviceID, now)
+		return err
+	default:
+		// 泵已被其他序列/代际接管，绝不能误停新任务，转人工复核。
+		return journal.NewManualReviewError(
+			"pump " + compensation.DeviceID + " ownership moved to sequence " + pump.OwnerSequence.String())
+	}
 }
 
 func (b *SequenceBook) Current(lineID model.LineID) (Sequence, bool) {

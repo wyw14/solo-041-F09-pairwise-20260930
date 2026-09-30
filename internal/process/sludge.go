@@ -61,3 +61,8 @@ func (p *Plant) RunCompensations(ctx context.Context) (int, error) {
 func (p *Plant) Pumps() []sludge.Pump {
 	return p.pumps.Snapshot()
 }
+
+// Compensations 返回全部活动补偿任务（含等待重试与人工复核），供污泥状态页展示。
+func (p *Plant) Compensations() []journal.Compensation {
+	return p.compensations.Pending()
+}

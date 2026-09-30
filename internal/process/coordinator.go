@@ -120,7 +120,14 @@ func NewPlant(dataDir string, lines []model.LineID, now func() time.Time) (*Plan
 	if err != nil {
 		return nil, err
 	}
-	queue := journal.NewCompensationQueue()
+	compensationStore, err := journal.NewCompensationStore(filepath.Join(dataDir, "compensations.json"))
+	if err != nil {
+		return nil, err
+	}
+	queue, err := journal.NewCompensationQueue(compensationStore)
+	if err != nil {
+		return nil, err
+	}
 	sequences, err := sludge.NewSequenceBook(pumps, queue)
 	if err != nil {
 		return nil, err
