@@ -2,12 +2,20 @@ package sludge
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/wyw14/cry-97/internal/model"
+)
+
+// 停泵补偿可能命中的不可恢复情况：自动重试会误停已归属新任务的泵，必须转人工复核。
+var (
+	ErrPumpNotFound         = errors.New("return pump is not found")
+	ErrPumpReadyStale       = errors.New("pump ready confirmation is stale")
+	ErrPumpOwnershipChanged = errors.New("pump ownership changed before stop")
 )
 
 type Pump struct {
@@ -63,10 +71,10 @@ func (c *PumpController) Ready(pumpID string, sequenceID uuid.UUID, generation u
 	defer c.mu.Unlock()
 	pump, ok := c.pumps[pumpID]
 	if !ok {
-		return Pump{}, errors.New("return pump is not found")
+		return Pump{}, ErrPumpNotFound
 	}
 	if pump.OwnerSequence != sequenceID || pump.OwnerGeneration != generation {
-		return Pump{}, errors.New("pump ready confirmation is stale")
+		return Pump{}, ErrPumpReadyStale
 	}
 	if flow <= 0 {
 		return Pump{}, errors.New("pump ready confirmation has no flow")
@@ -84,16 +92,28 @@ func (c *PumpController) StopOwned(pumpID string, sequenceID uuid.UUID, generati
 	defer c.mu.Unlock()
 	pump, ok := c.pumps[pumpID]
 	if !ok {
-		return Pump{}, errors.New("return pump is not found")
+		return Pump{}, fmt.Errorf("%w: %s", ErrPumpNotFound, pumpID)
 	}
 	if pump.OwnerSequence != sequenceID || pump.OwnerGeneration != generation {
-		return Pump{}, errors.New("pump ownership changed before stop")
+		return Pump{}, fmt.Errorf("%w: pump %s now owned by sequence %s generation %d (fault owner %s generation %d)",
+			ErrPumpOwnershipChanged, pumpID, pump.OwnerSequence, pump.OwnerGeneration, sequenceID, generation)
 	}
 	pump.Running = false
 	pump.Flow = 0
 	pump.UpdatedAt = now.UTC()
 	c.pumps[pumpID] = pump
 	return pump, nil
+}
+
+// OwnerOf 返回泵当前归属的序列与代际，供补偿执行前判断归属是否已变化。
+func (c *PumpController) OwnerOf(pumpID string) (sequenceID uuid.UUID, generation uint64, found bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	pump, ok := c.pumps[pumpID]
+	if !ok {
+		return uuid.Nil, 0, false
+	}
+	return pump.OwnerSequence, pump.OwnerGeneration, true
 }
 
 func (c *PumpController) Snapshot() []Pump {

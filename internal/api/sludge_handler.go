@@ -26,6 +26,7 @@ type sequenceRequest struct {
 func (s *Server) sludgeStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"pumps": s.plant.Pumps(), "interlocks": s.plant.Interlocks(),
+		"compensations": s.plant.Compensations(),
 	})
 }
 
@@ -167,4 +168,17 @@ func (s *Server) runCompensations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"executed": count})
+}
+
+func (s *Server) resolveCompensationReview(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "compensationID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.plant.ResolveCompensationReview(id); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"resolved": true})
 }

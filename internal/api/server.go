@@ -60,6 +60,7 @@ func (s *Server) routes() http.Handler {
 		api.Post("/backwash/{lineID}/{filterID}", s.startBackwash)
 		api.Post("/interlocks/{requestID}/release", s.releaseInterlock)
 		api.Post("/maintenance/compensations", s.runCompensations)
+		api.Post("/maintenance/compensations/{compensationID}/resolve", s.resolveCompensationReview)
 		api.Post("/settling/{lineID}/cycles", s.beginSettling)
 		api.Post("/settling/{lineID}/cycles/advance", s.advanceSettling)
 		api.Get("/alarms", s.alarmList)

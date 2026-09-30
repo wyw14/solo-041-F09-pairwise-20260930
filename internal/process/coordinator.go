@@ -120,9 +120,18 @@ func NewPlant(dataDir string, lines []model.LineID, now func() time.Time) (*Plan
 	if err != nil {
 		return nil, err
 	}
-	queue := journal.NewCompensationQueue()
+	queue, err := journal.NewPersistedCompensationQueue(filepath.Join(dataDir, "compensations"))
+	if err != nil {
+		return nil, err
+	}
 	sequences, err := sludge.NewSequenceBook(pumps, queue)
 	if err != nil {
+		return nil, err
+	}
+	// 进程重启后泵归属与序列状态只存在于内存：依据未完成的停泵补偿重建归属，
+	// 使补偿能继续执行而不是被误判为"归属已变化"。同一设备上较旧的待执行任务
+	// 说明归属在崩溃前已转给新序列，恢复时直接转人工复核，避免误停新任务。
+	if err := sequences.RecoverPending(queue.Pending()); err != nil {
 		return nil, err
 	}
 	arbiter := interlock.NewArbiter()

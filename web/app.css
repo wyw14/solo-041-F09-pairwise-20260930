@@ -46,3 +46,7 @@ th { color: #53636b; font-weight: 650; }
   .grid { grid-template-columns: 1fr; }
   .panel.wide { grid-column: auto; }
 }
+
+/* 停泵补偿任务表 */
+tr.warn td { background: #fbeeec; }
+td.reason { max-width: 320px; word-break: break-word; color: #a63e37; }

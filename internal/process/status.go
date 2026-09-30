@@ -88,11 +88,21 @@ func (p *Plant) Status(lineID model.LineID) (LineStatus, error) {
 		Line: line, Batch: batch, Intake: admission, Equalizers: p.equalizers.Snapshot(), Dose: dose, LabResult: labResult, Permit: permit,
 		Cycle: cycle, Handover: handover, Sequence: sequence, Settling: settlingState.Snapshot(),
 		Samples: p.sampler.LineSnapshot(lineID), SampleCursor: p.receiver.Current(lineID),
-		Compensations: p.compensations.Pending(),
+		Compensations: filterCompensations(p.compensations.List(), lineID),
 		Pumps:         filterPumps(p.pumps.Snapshot(), lineID), Blowers: p.aeration.Blowers(),
 		Valves: p.valves.Snapshot(), Commands: p.devices.All(),
 		AlarmCount: len(p.alarms.Active(lineID)), ObservedAt: p.now().UTC(),
 	}, nil
+}
+
+func filterCompensations(values []journal.Compensation, lineID model.LineID) []journal.Compensation {
+	result := make([]journal.Compensation, 0, len(values))
+	for _, value := range values {
+		if value.LineID == lineID {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func filterPumps(values []sludge.Pump, lineID model.LineID) []sludge.Pump {

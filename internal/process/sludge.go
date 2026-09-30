@@ -61,3 +61,20 @@ func (p *Plant) RunCompensations(ctx context.Context) (int, error) {
 func (p *Plant) Pumps() []sludge.Pump {
 	return p.pumps.Snapshot()
 }
+
+// Compensations 返回全部停泵补偿任务（待执行/退避重试/人工复核），供状态页展示。
+func (p *Plant) Compensations() []journal.Compensation {
+	return p.compensations.List()
+}
+
+// ResolveCompensationReview 人工确认现场已处置后移除复核任务。
+func (p *Plant) ResolveCompensationReview(id uuid.UUID) error {
+	resolved, err := p.compensations.ResolveReview(id)
+	if err != nil {
+		return err
+	}
+	if !resolved {
+		return errors.New("compensation review task is not found")
+	}
+	return nil
+}
